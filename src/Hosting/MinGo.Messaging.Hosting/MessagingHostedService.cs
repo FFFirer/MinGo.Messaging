@@ -32,9 +32,15 @@ public sealed class MessagingHostedService : IHostedService, IAsyncDisposable
     {
         _logger.LogInformation("Starting messaging hosted service...");
 
-        // Get all registered transports and connect them
-        // In a real scenario, the transports are keyed services
-        // For now, we connect via the subscription registry to determine what to subscribe
+        // Resolve all registered transports and connect them
+        var transports = _serviceProvider.GetServices<IMessagingTransport>();
+        foreach (var transport in transports)
+        {
+            await transport.ConnectAsync(cancellationToken);
+            _transports.Add(transport);
+            _logger.LogInformation("Transport connected: {TransportType}", transport.GetType().Name);
+        }
+
         foreach (var subscription in _subscriptionRegistry.Subscriptions)
         {
             _logger.LogInformation(
@@ -45,7 +51,8 @@ public sealed class MessagingHostedService : IHostedService, IAsyncDisposable
                 subscription.Target.ConsumerGroupId);
         }
 
-        _logger.LogInformation("Messaging hosted service started with {Count} subscription(s).",
+        _logger.LogInformation("Messaging hosted service started with {TransportCount} transport(s) and {Count} subscription(s).",
+            _transports.Count,
             _subscriptionRegistry.Subscriptions.Count);
     }
 

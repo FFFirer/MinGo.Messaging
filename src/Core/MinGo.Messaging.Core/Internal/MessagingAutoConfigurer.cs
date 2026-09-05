@@ -54,6 +54,11 @@ internal sealed class MessagingAutoConfigurer
             return (IMessagingTransport)ActivatorUtilities.CreateInstance(sp, transportType);
         });
 
+        // Also register as non-keyed so the hosted service can resolve all transports
+        // via IEnumerable<IMessagingTransport> for lifecycle management (connect/disconnect).
+        _services.AddSingleton<IMessagingTransport>(sp =>
+            (IMessagingTransport)sp.GetRequiredKeyedService<IMessagingTransport>(name));
+
         // Register keyed publisher for this integration
         _services.AddKeyedSingleton<IMessagePublisher>(name, (sp, key) =>
         {

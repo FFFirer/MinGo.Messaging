@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <RootNamespace>MinGo.Messaging</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <Description>IHostedService lifecycle management for MinGo.Messaging.</Description>
   </PropertyGroup>
 
   <ItemGroup>

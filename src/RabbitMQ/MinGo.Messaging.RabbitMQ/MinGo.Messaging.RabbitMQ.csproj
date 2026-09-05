@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <RootNamespace>MinGo.Messaging.RabbitMQ</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <Description>RabbitMQ transport integration for MinGo.Messaging with Competing and Broadcast delivery modes.</Description>
   </PropertyGroup>
 
   <ItemGroup>

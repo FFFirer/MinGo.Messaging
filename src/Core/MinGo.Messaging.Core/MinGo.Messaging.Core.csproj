@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <RootNamespace>MinGo.Messaging</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <Description>Auto-discovery, Keyed DI registration, consumer pipeline, and named publishers for MinGo.Messaging.</Description>
   </PropertyGroup>
 
   <ItemGroup>

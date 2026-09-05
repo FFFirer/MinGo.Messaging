@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SimpleMessageBroker.Client.Extensions;
 
 namespace MinGo.Messaging.SimpleMessageBroker;
 
@@ -11,7 +12,7 @@ public static class SimpleMessageBrokerIntegrationRegistration
 {
     /// <summary>
     /// Configures the SimpleMessageBroker integration by binding configuration to options
-    /// and registering a named HttpClient for server communication.
+    /// and registering the SimpleMessageBroker Client SDK services.
     /// </summary>
     /// <param name="services">The service collection to register services in.</param>
     /// <param name="section">The configuration section for this integration.</param>
@@ -27,21 +28,12 @@ public static class SimpleMessageBrokerIntegrationRegistration
         // Register the options as a singleton for the transport to consume
         services.AddSingleton(options);
 
-        // Register a named HttpClient configured for the SimpleMessageBroker server
-        services.AddHttpClient("SimpleMessageBroker", client =>
+        // Register the SimpleMessageBroker Client SDK (HttpClient, options, IMessageQueueClient)
+        services.AddMessageQueueClient(smbOptions =>
         {
-            client.BaseAddress = new Uri(options.BaseAddress);
-            client.Timeout = TimeSpan.FromSeconds(options.ConsumeTimeoutSeconds + 10);
-
-            if (!string.IsNullOrEmpty(options.ApiKey))
-            {
-                client.DefaultRequestHeaders.Add("X-Api-Key", options.ApiKey);
-            }
-        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-        {
-            MaxConnectionsPerServer = options.MaxConnectionsPerServer,
-            EnableMultipleHttp2Connections = true,
-            PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+            smbOptions.BaseAddress = options.BaseAddress;
+            smbOptions.ApiKey = options.ApiKey;
+            smbOptions.MaxConnectionsPerServer = options.MaxConnectionsPerServer;
         });
     }
 }

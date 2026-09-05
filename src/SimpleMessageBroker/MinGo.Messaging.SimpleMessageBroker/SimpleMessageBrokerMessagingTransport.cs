@@ -1,15 +1,12 @@
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using MinGo.Messaging.Subscriptions;
 using MinGo.Messaging.Transport;
+using SimpleMessageBroker.Client;
 
 namespace MinGo.Messaging.SimpleMessageBroker;
 
 /// <summary>
 /// SimpleMessageBroker implementation of <see cref="IMessagingTransport"/>.
-/// Uses JSON over HTTP to communicate with the SimpleMessageBroker server.
+/// Uses the SimpleMessageBroker.Client SDK to communicate with the server.
 /// Since SimpleMessageBroker uses a pull-based consumption model,
 /// this transport adapts it to the push-based <see cref="IMessagingTransport"/> contract
 /// via background polling loops.
@@ -17,31 +14,22 @@ namespace MinGo.Messaging.SimpleMessageBroker;
 internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTransport
 {
     private readonly SimpleMessageBrokerIntegrationOptions _options;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IMessageQueueClient _client;
 
-    private HttpClient? _httpClient;
     private CancellationTokenSource? _pollingCts;
     private readonly List<Task> _pollingTasks = new();
     private readonly object _lock = new();
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNameCaseInsensitive = true
-    };
-
     public SimpleMessageBrokerMessagingTransport(
         SimpleMessageBrokerIntegrationOptions options,
-        IHttpClientFactory httpClientFactory)
+        IMessageQueueClient client)
     {
         _options = options;
-        _httpClientFactory = httpClientFactory;
+        _client = client;
     }
 
     public Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        _httpClient = _httpClientFactory.CreateClient("SimpleMessageBroker");
         _pollingCts = new CancellationTokenSource();
         return Task.CompletedTask;
     }
@@ -54,7 +42,7 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
     {
         EnsureConnected();
 
-        // Convert headers to string dictionary for the SMB API
+        // Convert object headers to string dictionary for the SMB SDK
         Dictionary<string, string>? stringHeaders = null;
         if (headers.Count > 0)
         {
@@ -65,17 +53,12 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
             }
         }
 
-        var request = new
-        {
+        await _client.ProduceAsync(
             topic,
-            payload = Convert.ToBase64String(data.ToArray()),
-            contentType = "application/json",
-            headers = stringHeaders
-        };
-
-        var response = await _httpClient!.PostAsJsonAsync(
-            "api/v1/producer/messages", request, JsonOptions, cancellationToken);
-        response.EnsureSuccessStatusCode();
+            data.ToArray(),
+            contentType: "application/json",
+            headers: stringHeaders,
+            cancellationToken: cancellationToken);
     }
 
     public Task SubscribeAsync(
@@ -115,7 +98,6 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
 
             try
             {
-                // Wait for all polling loops to finish gracefully
                 Task[] tasks;
                 lock (_lock)
                 {
@@ -138,7 +120,7 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
     }
 
     /// <summary>
-    /// Background polling loop that pulls messages from the SimpleMessageBroker server,
+    /// Background polling loop that pulls messages via the SimpleMessageBroker SDK,
     /// dispatches them to the handler, and acknowledges successful processing.
     /// </summary>
     private async Task PollingLoopAsync(
@@ -152,13 +134,17 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
         {
             try
             {
-                var messages = await PullMessagesAsync(topic, consumerGroup, consumerId, cancellationToken);
+                var result = await _client.ConsumeAsync(
+                    topic,
+                    consumerGroup,
+                    consumerId,
+                    batchSize: _options.BatchSize,
+                    timeoutSeconds: _options.ConsumeTimeoutSeconds,
+                    cancellationToken: cancellationToken);
 
-                foreach (var message in messages)
+                foreach (var message in result.Messages)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
-
-                    var payload = Convert.FromBase64String(message.PayloadBase64);
 
                     // Convert string headers to object headers
                     var headers = new Dictionary<string, object>();
@@ -170,17 +156,18 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
                         }
                     }
 
-                    var result = await handler(payload, headers, cancellationToken);
+                    var consumeResult = await handler(message.Payload, headers, cancellationToken);
 
-                    if (result == ConsumeResult.Ack)
+                    if (consumeResult == ConsumeResult.Ack)
                     {
-                        await AcknowledgeAsync(message.Id, consumerGroup, consumerId, cancellationToken);
+                        await _client.AcknowledgeAsync(
+                            message.Id, consumerGroup, consumerId, cancellationToken);
                     }
                     // Nack and Retry are implicitly handled: un-acked messages remain
-                    // available for re-consumption in the SimpleMessageBroker server.
+                    // available for re-consumption on the SimpleMessageBroker server.
                 }
 
-                if (messages.Count == 0)
+                if (result.Count == 0)
                 {
                     // No messages available — wait before next poll
                     await Task.Delay(_options.PollingInterval, cancellationToken);
@@ -205,81 +192,11 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
         }
     }
 
-    private async Task<List<ConsumedMessageDto>> PullMessagesAsync(
-        string topic,
-        string consumerGroup,
-        string? consumerId,
-        CancellationToken cancellationToken)
-    {
-        var request = new
-        {
-            topic,
-            consumerGroup,
-            consumerId,
-            batchSize = _options.BatchSize,
-            timeoutSeconds = _options.ConsumeTimeoutSeconds
-        };
-
-        var response = await _httpClient!.PostAsJsonAsync(
-            "api/v1/consumer/pull", request, JsonOptions, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<ConsumeResultDto>>(
-            JsonOptions, cancellationToken);
-
-        return apiResponse?.Data?.Messages ?? [];
-    }
-
-    private async Task AcknowledgeAsync(
-        string messageId,
-        string consumerGroup,
-        string? consumerId,
-        CancellationToken cancellationToken)
-    {
-        var url = $"api/v1/consumer/ack/{Uri.EscapeDataString(messageId)}?consumerGroup={Uri.EscapeDataString(consumerGroup)}";
-        if (consumerId is not null)
-        {
-            url += $"&consumerId={Uri.EscapeDataString(consumerId)}";
-        }
-
-        var response = await _httpClient!.PostAsync(url, content: null, cancellationToken);
-        response.EnsureSuccessStatusCode();
-    }
-
     private void EnsureConnected()
     {
-        if (_httpClient is null || _pollingCts is null)
+        if (_pollingCts is null)
         {
             throw new InvalidOperationException("Transport is not connected. Call ConnectAsync first.");
         }
-    }
-
-    // ---- Internal DTOs for SimpleMessageBroker REST API ----
-
-    private sealed class ApiResponse<T>
-    {
-        public bool Success { get; set; }
-        public string Message { get; set; } = string.Empty;
-        public T? Data { get; set; }
-        public string? ErrorCode { get; set; }
-    }
-
-    private sealed class ConsumeResultDto
-    {
-        public List<ConsumedMessageDto> Messages { get; set; } = [];
-        public int Count { get; set; }
-        public bool HasMore { get; set; }
-    }
-
-    private sealed class ConsumedMessageDto
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Topic { get; set; } = string.Empty;
-        public string? Key { get; set; }
-        public int Partition { get; set; }
-        public string PayloadBase64 { get; set; } = string.Empty;
-        public string ContentType { get; set; } = string.Empty;
-        public Dictionary<string, string>? Headers { get; set; }
-        public DateTime CreatedAt { get; set; }
     }
 }

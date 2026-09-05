@@ -3,6 +3,9 @@
   <Folder Name="/samples/RabbitMQSample/">
     <Project Path="samples/RabbitMQSample/MinGo.Messaging.Samples.RabbitMQ/MinGo.Messaging.Samples.RabbitMQ.csproj" />
   </Folder>
+  <Folder Name="/samples/SimpleMessageBrokerSample/">
+    <Project Path="samples/SimpleMessageBrokerSample/MinGo.Messaging.Samples.SimpleMessageBroker/MinGo.Messaging.Samples.SimpleMessageBroker.csproj" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Abstractions/">
     <Project Path="src/Abstractions/MinGo.Messaging.Abstractions/MinGo.Messaging.Abstractions.csproj" />

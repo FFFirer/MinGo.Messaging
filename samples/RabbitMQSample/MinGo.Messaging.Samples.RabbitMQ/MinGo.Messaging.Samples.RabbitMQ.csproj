@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MinGo.Messaging.Samples.RabbitMQ</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Core\MinGo.Messaging.Core\MinGo.Messaging.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\Hosting\MinGo.Messaging.Hosting\MinGo.Messaging.Hosting.csproj" />
+    <ProjectReference Include="..\..\..\src\RabbitMQ\MinGo.Messaging.RabbitMQ\MinGo.Messaging.RabbitMQ.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+</Project>

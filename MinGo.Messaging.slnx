@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/samples/" />
+  <Folder Name="/samples/RabbitMQSample/">
+    <Project Path="samples/RabbitMQSample/MinGo.Messaging.Samples.RabbitMQ/MinGo.Messaging.Samples.RabbitMQ.csproj" />
+  </Folder>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Abstractions/">
+    <Project Path="src/Abstractions/MinGo.Messaging.Abstractions/MinGo.Messaging.Abstractions.csproj" />
+  </Folder>
+  <Folder Name="/src/Core/">
+    <Project Path="src/Core/MinGo.Messaging.Core/MinGo.Messaging.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/Hosting/">
+    <Project Path="src/Hosting/MinGo.Messaging.Hosting/MinGo.Messaging.Hosting.csproj" />
+  </Folder>
+  <Folder Name="/src/RabbitMQ/">
+    <Project Path="src/RabbitMQ/MinGo.Messaging.RabbitMQ/MinGo.Messaging.RabbitMQ.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Abstractions.Tests/">
+    <Project Path="tests/Abstractions.Tests/MinGo.Messaging.Abstractions.Tests/MinGo.Messaging.Abstractions.Tests.csproj" />
+  </Folder>
+</Solution>

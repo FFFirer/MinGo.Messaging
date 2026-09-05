@@ -22,10 +22,11 @@ public interface IMessagingBuilder
     IConfiguration Configuration { get; }
 
     /// <summary>
-    /// Registers a named publisher for the specified message type.
+    /// Auto-discovers and registers all typed message bus publishers.
+    /// Scans loaded assemblies for interfaces decorated with <see cref="MessageBusAttribute"/>
+    /// and resolves their transport from configuration.
     /// </summary>
-    /// <param name="name">The publisher/endpoint name.</param>
-    IMessagingBuilder AddPublisher(string name);
+    IMessagingBuilder AddPublishers();
 
     /// <summary>
     /// Scans the specified assembly for consumer declarations and registers them.

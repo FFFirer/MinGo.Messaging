@@ -4,14 +4,14 @@ namespace MinGo.Messaging.Samples.RabbitMQ;
 
 /// <summary>
 /// Background worker that periodically publishes OrderCreated events.
-/// Demonstrates the named publisher pattern.
+/// Demonstrates the typed message bus publisher pattern.
 /// </summary>
 public sealed class OrderPublisherWorker : BackgroundService
 {
-    private readonly INamedMessagePublisher _publisher;
+    private readonly IOrderBusPublisher _publisher;
     private readonly ILogger<OrderPublisherWorker> _logger;
 
-    public OrderPublisherWorker(INamedMessagePublisher publisher, ILogger<OrderPublisherWorker> logger)
+    public OrderPublisherWorker(IOrderBusPublisher publisher, ILogger<OrderPublisherWorker> logger)
     {
         _publisher = publisher;
         _logger = logger;
@@ -35,7 +35,7 @@ public sealed class OrderPublisherWorker : BackgroundService
 
             try
             {
-                await _publisher.PublishAsync("OrderBus", order, stoppingToken);
+                await _publisher.PublishAsync(order, stoppingToken);
 
                 _logger.LogInformation(
                     "Published OrderCreated event: {OrderId} ({Product} x{Quantity})",

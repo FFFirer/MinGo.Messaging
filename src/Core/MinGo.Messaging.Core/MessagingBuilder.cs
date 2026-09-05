@@ -14,7 +14,7 @@ namespace MinGo.Messaging;
 internal sealed class MessagingBuilder : IMessagingBuilder
 {
     private readonly List<Assembly> _consumerAssemblies = new();
-    private readonly List<string> _publisherNames = new();
+    private bool _publishersRegistered;
 
     public MessagingBuilder(IServiceCollection services, IConfiguration configuration)
     {
@@ -26,10 +26,14 @@ internal sealed class MessagingBuilder : IMessagingBuilder
 
     public IConfiguration Configuration { get; }
 
-    public IMessagingBuilder AddPublisher(string name)
+    public IMessagingBuilder AddPublishers()
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        _publisherNames.Add(name);
+        if (_publishersRegistered) return this;
+        _publishersRegistered = true;
+
+        // Delegate to the auto-configurer to scan assemblies and register typed publishers
+        var configurer = new MessagingAutoConfigurer(Services, Configuration, this);
+        configurer.RegisterTypedPublishers();
         return this;
     }
 
@@ -57,9 +61,4 @@ internal sealed class MessagingBuilder : IMessagingBuilder
     /// Gets the registered consumer assemblies for internal use.
     /// </summary>
     internal IReadOnlyList<Assembly> ConsumerAssemblies => _consumerAssemblies;
-
-    /// <summary>
-    /// Gets the registered publisher names for internal use.
-    /// </summary>
-    internal IReadOnlyList<string> PublisherNames => _publisherNames;
 }

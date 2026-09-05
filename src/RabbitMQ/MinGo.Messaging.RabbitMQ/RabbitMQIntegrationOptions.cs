@@ -31,4 +31,27 @@ public sealed class RabbitMQIntegrationOptions : MessagingIntegrationOptions
     /// Gets or sets the prefetch count for consumers. Defaults to 10.
     /// </summary>
     public ushort PrefetchCount { get; set; } = 10;
+
+    /// <summary>
+    /// Gets or sets whether automatic connection recovery is enabled.
+    /// When true, the RabbitMQ client will automatically reconnect after a connection failure.
+    /// Defaults to true.
+    /// </summary>
+    public bool AutomaticRecoveryEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the interval between automatic recovery attempts. Defaults to 5 seconds.
+    /// </summary>
+    public TimeSpan RecoveryInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Gets or sets the maximum number of retries for the initial connection attempt.
+    /// Defaults to 5. Set to -1 for infinite retries.
+    /// </summary>
+    public int MaxConnectionRetries { get; set; } = 5;
+
+    /// <summary>
+    /// Gets or sets the delay between initial connection retry attempts. Defaults to 2 seconds.
+    /// </summary>
+    public TimeSpan ConnectionRetryDelay { get; set; } = TimeSpan.FromSeconds(2);
 }

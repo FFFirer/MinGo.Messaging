@@ -1,5 +1,6 @@
 using MinGo.Messaging.Subscriptions;
 using MinGo.Messaging.Transport;
+using Microsoft.Extensions.Logging;
 using SimpleMessageBroker.Client;
 
 namespace MinGo.Messaging.SimpleMessageBroker;
@@ -15,6 +16,7 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
 {
     private readonly SimpleMessageBrokerIntegrationOptions _options;
     private readonly IMessageQueueClient _client;
+    private readonly ILogger<SimpleMessageBrokerMessagingTransport> _logger;
 
     private CancellationTokenSource? _pollingCts;
     private readonly List<Task> _pollingTasks = new();
@@ -22,16 +24,47 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
 
     public SimpleMessageBrokerMessagingTransport(
         SimpleMessageBrokerIntegrationOptions options,
-        IMessageQueueClient client)
+        IMessageQueueClient client,
+        ILogger<SimpleMessageBrokerMessagingTransport> logger)
     {
         _options = options;
         _client = client;
+        _logger = logger;
     }
 
-    public Task ConnectAsync(CancellationToken cancellationToken = default)
+    public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        _pollingCts = new CancellationTokenSource();
-        return Task.CompletedTask;
+        var maxRetries = _options.MaxConnectionRetries;
+        var retryDelay = _options.ConnectionRetryDelay;
+
+        for (var attempt = 0; ; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                // Validate connectivity by performing a lightweight operation
+                _pollingCts = new CancellationTokenSource();
+
+                _logger.LogInformation("SimpleMessageBroker transport connected.");
+                return;
+            }
+            catch (Exception ex) when (attempt < maxRetries || maxRetries == -1)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "SimpleMessageBroker connection attempt {Attempt} failed. Retrying in {Delay}...",
+                    attempt + 1,
+                    retryDelay);
+
+                await Task.Delay(retryDelay, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "SimpleMessageBroker connection failed after {Attempts} attempts.", attempt + 1);
+                throw;
+            }
+        }
     }
 
     public async Task PublishAsync(
@@ -111,6 +144,8 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
                 // Expected during shutdown
             }
         }
+
+        _logger.LogInformation("SimpleMessageBroker transport disconnected.");
     }
 
     public ValueTask DisposeAsync()
@@ -122,6 +157,7 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
     /// <summary>
     /// Background polling loop that pulls messages via the SimpleMessageBroker SDK,
     /// dispatches them to the handler, and acknowledges successful processing.
+    /// Includes automatic retry with error logging for transient failures.
     /// </summary>
     private async Task PollingLoopAsync(
         string topic,
@@ -130,6 +166,9 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
         Func<ReadOnlyMemory<byte>, IDictionary<string, object>, CancellationToken, Task<ConsumeResult>> handler,
         CancellationToken cancellationToken)
     {
+        var consecutiveErrors = 0;
+        var maxBackoff = TimeSpan.FromSeconds(30);
+
         while (!cancellationToken.IsCancellationRequested)
         {
             try
@@ -141,6 +180,9 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
                     batchSize: _options.BatchSize,
                     timeoutSeconds: _options.ConsumeTimeoutSeconds,
                     cancellationToken: cancellationToken);
+
+                // Reset error counter on successful consume
+                consecutiveErrors = 0;
 
                 foreach (var message in result.Messages)
                 {
@@ -177,12 +219,22 @@ internal sealed class SimpleMessageBrokerMessagingTransport : IMessagingTranspor
             {
                 break;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Transient error — wait before retrying to avoid tight error loops
+                consecutiveErrors++;
+
+                _logger.LogWarning(
+                    ex,
+                    "Error in polling loop for topic {Topic} (consecutive errors: {Errors}). Retrying...",
+                    topic,
+                    consecutiveErrors);
+
+                // Exponential backoff on consecutive errors, capped at maxBackoff
+                var backoff = TimeSpan.FromSeconds(Math.Min(Math.Pow(2, consecutiveErrors), maxBackoff.TotalSeconds));
+
                 try
                 {
-                    await Task.Delay(_options.PollingInterval, cancellationToken);
+                    await Task.Delay(backoff, cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {

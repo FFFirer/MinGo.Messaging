@@ -42,4 +42,15 @@ public sealed class SimpleMessageBrokerIntegrationOptions : MessagingIntegration
     /// Defaults to 50.
     /// </summary>
     public int MaxConnectionsPerServer { get; set; } = 50;
+
+    /// <summary>
+    /// Gets or sets the maximum number of retries for the initial connection attempt.
+    /// Defaults to 5. Set to -1 for infinite retries.
+    /// </summary>
+    public int MaxConnectionRetries { get; set; } = 5;
+
+    /// <summary>
+    /// Gets or sets the delay between initial connection retry attempts. Defaults to 2 seconds.
+    /// </summary>
+    public TimeSpan ConnectionRetryDelay { get; set; } = TimeSpan.FromSeconds(2);
 }

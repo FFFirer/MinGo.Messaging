@@ -11,7 +11,7 @@ namespace MinGo.Messaging.Internal;
 /// <summary>
 /// Automatically configures the messaging system based on conventions:
 /// discovers Integration SDKs, loads configuration, registers keyed services,
-/// and builds consumer pipelines.
+/// builds consumer pipelines, and auto-registers typed message bus publishers.
 /// </summary>
 internal sealed class MessagingAutoConfigurer
 {
@@ -26,13 +26,16 @@ internal sealed class MessagingAutoConfigurer
         _builder = builder;
     }
 
+    /// <summary>
+    /// Called during AddMessaging(): discovers integrations, registers subscriptions and consumers.
+    /// </summary>
     public void Configure()
     {
         // 1. Discover Integration SDKs
         var discovery = new IntegrationDiscovery();
         var integrations = discovery.DiscoverIntegrations();
 
-        // 2. Register each discovered integration
+        // 2. Register each discovered integration as keyed services
         foreach (var integration in integrations)
         {
             RegisterIntegration(integration);
@@ -54,8 +57,43 @@ internal sealed class MessagingAutoConfigurer
         // 4. Register the populated registry
         _services.AddSingleton(registry);
 
-        // 5. Register named publishers
-        RegisterNamedPublishers();
+        // 5. Register default IMessagePublisher when there is exactly one integration
+        RegisterDefaultPublisher(integrations);
+    }
+
+    /// <summary>
+    /// Called from IMessagingBuilder.AddPublishers(): scans assemblies for typed publisher
+    /// interfaces decorated with <see cref="MessageBusAttribute"/> and registers them.
+    /// Each typed publisher is backed by the keyed <see cref="IMessagePublisher"/> whose name
+    /// matches the integration declared in <c>Messaging:Publishers:{BusName}:Integration</c>.
+    /// </summary>
+    public void RegisterTypedPublishers()
+    {
+        var publishersConfig = _configuration.GetSection("Messaging:Publishers");
+        var typedPublisherTypes = DiscoverTypedPublishers();
+
+        foreach (var (interfaceType, busName) in typedPublisherTypes)
+        {
+            // Resolve integration name from configuration
+            var integrationName = publishersConfig
+                .GetSection(busName)["Integration"];
+
+            if (string.IsNullOrWhiteSpace(integrationName))
+            {
+                throw new InvalidOperationException(
+                    $"No integration configured for message bus '{busName}'. " +
+                    $"Add a 'Messaging:Publishers:{busName}:Integration' entry in configuration.");
+            }
+
+            // Register the typed publisher interface as a singleton factory
+            _services.AddSingleton(interfaceType, sp =>
+            {
+                var keyedPublisher = sp.GetRequiredKeyedService<IMessagePublisher>(integrationName);
+                var proxy = (TypedMessagePublisher)DispatchProxy.Create(interfaceType, typeof(TypedMessagePublisher));
+                proxy.Initialize(keyedPublisher);
+                return proxy;
+            });
+        }
     }
 
     private void RegisterIntegration(IntegrationDescriptor integration)
@@ -96,16 +134,54 @@ internal sealed class MessagingAutoConfigurer
         }
     }
 
-    private void RegisterNamedPublishers()
+    private void RegisterDefaultPublisher(IReadOnlyList<IntegrationDescriptor> integrations)
     {
-        // Register INamedMessagePublisher
-        _services.AddSingleton<INamedMessagePublisher, NamedMessagePublisher>();
-
-        // Also register a default IMessagePublisher that delegates to the first available integration
-        _services.AddSingleton<IMessagePublisher>(sp =>
+        if (integrations.Count == 1)
         {
-            var namedPublisher = sp.GetRequiredService<INamedMessagePublisher>();
-            return new DefaultMessagePublisher(namedPublisher);
-        });
+            // When there is exactly one integration, register its keyed publisher as the default
+            var integrationName = integrations[0].Name;
+            _services.AddSingleton<IMessagePublisher>(sp =>
+                sp.GetRequiredKeyedService<IMessagePublisher>(integrationName));
+        }
+    }
+
+    /// <summary>
+    /// Scans loaded assemblies and registered consumer assemblies for interfaces
+    /// decorated with <see cref="MessageBusAttribute"/> that extend <see cref="IMessagePublisher"/>.
+    /// </summary>
+    private IReadOnlyList<(Type InterfaceType, string BusName)> DiscoverTypedPublishers()
+    {
+        var result = new List<(Type, string)>();
+        var seen = new HashSet<Type>();
+
+        // Collect candidate assemblies: loaded assemblies + consumer assemblies
+        var assemblies = AppDomain.CurrentDomain.GetAssemblies()
+            .Concat(_builder.ConsumerAssemblies)
+            .Distinct();
+
+        foreach (var assembly in assemblies)
+        {
+            try
+            {
+                foreach (var type in assembly.GetExportedTypes())
+                {
+                    if (!type.IsInterface) continue;
+                    if (!typeof(IMessagePublisher).IsAssignableFrom(type)) continue;
+                    if (seen.Contains(type)) continue;
+
+                    var busAttr = type.GetCustomAttribute<MessageBusAttribute>();
+                    if (busAttr is null) continue;
+
+                    seen.Add(type);
+                    result.Add((type, busAttr.Name));
+                }
+            }
+            catch
+            {
+                // Skip assemblies that cannot be inspected (dynamic, reflection-only, etc.)
+            }
+        }
+
+        return result;
     }
 }

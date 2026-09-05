@@ -5,8 +5,9 @@ using MinGo.Messaging.Samples.SimpleMessageBroker.Consumers;
 var builder = Host.CreateApplicationBuilder(args);
 
 // Add messaging with auto-discovery
+// AddPublishers() auto-scans assemblies for [MessageBus] interfaces and resolves transports from config
 builder.Services.AddMessaging(builder.Configuration)
-    .AddPublisher("OrderBus")
+    .AddPublishers()
     .AddConsumer(typeof(OrderCreatedBillingHandler).Assembly);
 
 // Add messaging hosted service for lifecycle management

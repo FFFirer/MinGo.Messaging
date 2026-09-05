@@ -9,74 +9,89 @@ using Microsoft.Extensions.DependencyInjection;
 namespace MinGo.Messaging.Internal;
 
 /// <summary>
-/// Automatically configures the messaging system based on conventions:
-/// discovers Integration SDKs, loads configuration, registers keyed services,
-/// builds consumer pipelines, and auto-registers typed message bus publishers.
+/// Performs the convention-driven DI registration for the messaging system: registers discovered
+/// Integration SDKs as keyed services, builds consumer subscriptions, registers consumer types,
+/// and registers typed message bus publishers.
 /// </summary>
+/// <remarks>
+/// This type is stateless with respect to which assemblies have already been processed; the caller
+/// (<see cref="MessagingBuilder"/>) owns the scan/dedup state and passes in the assemblies to act on.
+/// </remarks>
 internal sealed class MessagingAutoConfigurer
 {
     private readonly IServiceCollection _services;
     private readonly IConfiguration _configuration;
-    private readonly MessagingBuilder _builder;
 
-    public MessagingAutoConfigurer(IServiceCollection services, IConfiguration configuration, MessagingBuilder builder)
+    public MessagingAutoConfigurer(IServiceCollection services, IConfiguration configuration)
     {
         _services = services;
         _configuration = configuration;
-        _builder = builder;
     }
 
     /// <summary>
-    /// Called during AddMessaging(): discovers integrations, registers subscriptions and consumers.
+    /// Registers a discovered integration (assembly-scanning path): invokes its convention-based
+    /// Configure hook to bind options / register SDK services, then registers the keyed services.
     /// </summary>
-    public void Configure()
+    public void RegisterDiscoveredIntegration(IntegrationDescriptor integration)
     {
-        // 1. Discover Integration SDKs
-        var discovery = new IntegrationDiscovery();
-        var integrations = discovery.DiscoverIntegrations();
+        // Let the integration SDK register its own dependencies (options, client SDKs, etc.)
+        ConfigureIntegration(integration);
 
-        // 2. Register each discovered integration as keyed services
-        foreach (var integration in integrations)
-        {
-            RegisterIntegration(integration);
-        }
-
-        // 3. Build subscriptions from consumer assemblies
-        var subscriptionBuilder = new SubscriptionBuilder();
-        var registry = new SubscriptionRegistry();
-
-        foreach (var assembly in _builder.ConsumerAssemblies)
-        {
-            var subscriptions = subscriptionBuilder.BuildSubscriptions(assembly);
-            registry.RegisterRange(subscriptions);
-
-            // Register consumer types in DI
-            RegisterConsumerTypes(assembly);
-        }
-
-        // 4. Register the populated registry
-        _services.AddSingleton(registry);
-
-        // 5. Register default IMessagePublisher when there is exactly one integration
-        RegisterDefaultPublisher(integrations);
+        RegisterIntegrationServices(integration.Name, integration.TransportType);
     }
 
     /// <summary>
-    /// Called from IMessagingBuilder.AddPublishers(): scans assemblies for typed publisher
-    /// interfaces decorated with <see cref="MessageBusAttribute"/> and registers them.
-    /// Each typed publisher is backed by the keyed <see cref="IMessagePublisher"/> whose name
-    /// matches the integration declared in <c>Messaging:Publishers:{BusName}:Integration</c>.
+    /// Registers the keyed <see cref="IMessagingTransport"/> and keyed <see cref="IMessagePublisher"/>
+    /// for an integration. This does NOT bind options or invoke any Configure hook — the caller must
+    /// have registered whatever services the transport's constructor requires. Used by both the
+    /// explicit (<c>AddIntegration</c>) and scanning paths.
     /// </summary>
-    public void RegisterTypedPublishers()
+    public void RegisterIntegrationServices(string name, Type transportType)
+    {
+        // Register the transport as keyed singleton
+        _services.AddKeyedSingleton(typeof(IMessagingTransport), name, (sp, key) =>
+        {
+            return (IMessagingTransport)ActivatorUtilities.CreateInstance(sp, transportType);
+        });
+
+        // Register keyed publisher for this integration
+        _services.AddKeyedSingleton<IMessagePublisher>(name, (sp, key) =>
+        {
+            var transport = sp.GetRequiredKeyedService<IMessagingTransport>(name);
+            var serializer = sp.GetRequiredService<IMessageSerializer>();
+            return new TransportMessagePublisher(transport, serializer);
+        });
+    }
+
+    /// <summary>
+    /// Builds subscriptions for the consumers declared in <paramref name="assembly"/>, adds them to
+    /// the shared <paramref name="registry"/>, and registers the consumer types in DI.
+    /// </summary>
+    public void RegisterConsumers(Assembly assembly, SubscriptionRegistry registry)
+    {
+        var subscriptions = new SubscriptionBuilder().BuildSubscriptions(assembly);
+        registry.RegisterRange(subscriptions);
+
+        RegisterConsumerTypes(assembly);
+    }
+
+    /// <summary>
+    /// Scans the supplied assemblies for interfaces decorated with <see cref="MessageBusAttribute"/>
+    /// that extend <see cref="IMessagePublisher"/> and registers each as a singleton backed by the
+    /// keyed publisher whose name matches <c>Messaging:Publishers:{BusName}:Integration</c>.
+    /// </summary>
+    /// <param name="assemblies">The assemblies to scan.</param>
+    /// <param name="registeredTypes">
+    /// Accumulator of already-registered publisher interfaces, used to deduplicate across scans.
+    /// </param>
+    public void RegisterTypedPublishers(IEnumerable<Assembly> assemblies, HashSet<Type> registeredTypes)
     {
         var publishersConfig = _configuration.GetSection("Messaging:Publishers");
-        var typedPublisherTypes = DiscoverTypedPublishers();
 
-        foreach (var (interfaceType, busName) in typedPublisherTypes)
+        foreach (var (interfaceType, busName) in DiscoverTypedPublishers(assemblies, registeredTypes))
         {
             // Resolve integration name from configuration
-            var integrationName = publishersConfig
-                .GetSection(busName)["Integration"];
+            var integrationName = publishersConfig.GetSection(busName)["Integration"];
 
             if (string.IsNullOrWhiteSpace(integrationName))
             {
@@ -96,21 +111,35 @@ internal sealed class MessagingAutoConfigurer
         }
     }
 
-    private void RegisterIntegration(IntegrationDescriptor integration)
+    /// <summary>
+    /// Invokes the integration's static Configure(IServiceCollection, IConfiguration) method
+    /// if one exists, allowing the SDK to register its own dependencies.
+    /// </summary>
+    private void ConfigureIntegration(IntegrationDescriptor integration)
     {
-        // Register the transport as keyed singleton
-        _services.AddKeyedSingleton(typeof(IMessagingTransport), integration.Name, (sp, key) =>
-        {
-            return (IMessagingTransport)ActivatorUtilities.CreateInstance(sp, integration.TransportType);
-        });
+        var section = _configuration.GetSection($"Messaging:Integrations:{integration.Name}");
+        var registrationType = FindRegistrationType(integration.Assembly);
 
-        // Register keyed publisher for this integration
-        _services.AddKeyedSingleton<IMessagePublisher>(integration.Name, (sp, key) =>
+        if (registrationType is not null)
         {
-            var transport = sp.GetRequiredKeyedService<IMessagingTransport>(integration.Name);
-            var serializer = sp.GetRequiredService<IMessageSerializer>();
-            return new TransportMessagePublisher(transport, serializer);
-        });
+            registrationType.GetMethod("Configure", [typeof(IServiceCollection), typeof(IConfiguration)])
+                ?.Invoke(null, [_services, section]);
+        }
+    }
+
+    private static Type? FindRegistrationType(Assembly assembly)
+    {
+        foreach (var type in assembly.GetExportedTypes())
+        {
+            if (!type.IsAbstract || !type.IsSealed) continue; // static class check
+
+            var method = type.GetMethod("Configure", BindingFlags.Public | BindingFlags.Static,
+                null, [typeof(IServiceCollection), typeof(IConfiguration)], null);
+
+            if (method is not null) return type;
+        }
+
+        return null;
     }
 
     private void RegisterConsumerTypes(Assembly assembly)
@@ -134,54 +163,35 @@ internal sealed class MessagingAutoConfigurer
         }
     }
 
-    private void RegisterDefaultPublisher(IReadOnlyList<IntegrationDescriptor> integrations)
+    private static IEnumerable<(Type InterfaceType, string BusName)> DiscoverTypedPublishers(
+        IEnumerable<Assembly> assemblies, HashSet<Type> registeredTypes)
     {
-        if (integrations.Count == 1)
-        {
-            // When there is exactly one integration, register its keyed publisher as the default
-            var integrationName = integrations[0].Name;
-            _services.AddSingleton<IMessagePublisher>(sp =>
-                sp.GetRequiredKeyedService<IMessagePublisher>(integrationName));
-        }
-    }
-
-    /// <summary>
-    /// Scans loaded assemblies and registered consumer assemblies for interfaces
-    /// decorated with <see cref="MessageBusAttribute"/> that extend <see cref="IMessagePublisher"/>.
-    /// </summary>
-    private IReadOnlyList<(Type InterfaceType, string BusName)> DiscoverTypedPublishers()
-    {
-        var result = new List<(Type, string)>();
-        var seen = new HashSet<Type>();
-
-        // Collect candidate assemblies: loaded assemblies + consumer assemblies
-        var assemblies = AppDomain.CurrentDomain.GetAssemblies()
-            .Concat(_builder.ConsumerAssemblies)
-            .Distinct();
-
         foreach (var assembly in assemblies)
         {
+            Type[] types;
             try
             {
-                foreach (var type in assembly.GetExportedTypes())
-                {
-                    if (!type.IsInterface) continue;
-                    if (!typeof(IMessagePublisher).IsAssignableFrom(type)) continue;
-                    if (seen.Contains(type)) continue;
-
-                    var busAttr = type.GetCustomAttribute<MessageBusAttribute>();
-                    if (busAttr is null) continue;
-
-                    seen.Add(type);
-                    result.Add((type, busAttr.Name));
-                }
+                types = assembly.GetExportedTypes();
             }
             catch
             {
                 // Skip assemblies that cannot be inspected (dynamic, reflection-only, etc.)
+                continue;
+            }
+
+            foreach (var type in types)
+            {
+                if (!type.IsInterface) continue;
+                if (!typeof(IMessagePublisher).IsAssignableFrom(type)) continue;
+
+                var busAttr = type.GetCustomAttribute<MessageBusAttribute>();
+                if (busAttr is null) continue;
+
+                // Deduplicate across repeated scans (a type may be reachable from multiple assemblies).
+                if (!registeredTypes.Add(type)) continue;
+
+                yield return (type, busAttr.Name);
             }
         }
-
-        return result;
     }
 }

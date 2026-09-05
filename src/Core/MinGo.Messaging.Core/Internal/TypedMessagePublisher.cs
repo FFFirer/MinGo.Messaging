@@ -6,7 +6,11 @@ namespace MinGo.Messaging.Internal;
 /// Dynamic proxy that implements a typed message bus publisher interface
 /// (e.g. IOrderBusPublisher) by delegating to the underlying keyed <see cref="IMessagePublisher"/>.
 /// </summary>
-internal sealed class TypedMessagePublisher : DispatchProxy
+/// <remarks>
+/// This type must NOT be sealed: <see cref="DispatchProxy"/> generates a runtime subclass of it
+/// (via <c>DispatchProxy.Create</c>), and sealing the base type makes proxy creation throw.
+/// </remarks>
+internal class TypedMessagePublisher : DispatchProxy
 {
     private IMessagePublisher _inner = null!;
 

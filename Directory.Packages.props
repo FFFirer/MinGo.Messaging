@@ -13,6 +13,7 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="8.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyModel" Version="8.0.0" />
 
     <!-- Serialization -->
     <PackageVersion Include="System.Text.Json" Version="8.0.5" />

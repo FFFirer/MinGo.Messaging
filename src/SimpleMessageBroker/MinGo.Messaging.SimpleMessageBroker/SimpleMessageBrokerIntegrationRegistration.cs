@@ -11,6 +11,13 @@ namespace MinGo.Messaging.SimpleMessageBroker;
 public static class SimpleMessageBrokerIntegrationRegistration
 {
     /// <summary>
+    /// The integration name — used as the keyed-service key, the configuration section name
+    /// (<c>Messaging:Integrations:SimpleMessageBroker</c>), and the value referenced by
+    /// <c>Messaging:Publishers:{Bus}:Integration</c>.
+    /// </summary>
+    public const string IntegrationName = "SimpleMessageBroker";
+
+    /// <summary>
     /// Configures the SimpleMessageBroker integration by binding configuration to options
     /// and registering the SimpleMessageBroker Client SDK services.
     /// </summary>
@@ -20,7 +27,7 @@ public static class SimpleMessageBrokerIntegrationRegistration
     {
         var options = new SimpleMessageBrokerIntegrationOptions
         {
-            IntegrationName = "SimpleMessageBroker"
+            IntegrationName = IntegrationName
         };
 
         section.Bind(options);

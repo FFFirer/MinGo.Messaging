@@ -1,6 +1,4 @@
-using MinGo.Messaging.Internal;
 using MinGo.Messaging.Serialization;
-using MinGo.Messaging.Subscriptions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -14,7 +12,9 @@ public static class MessagingServiceCollectionExtensions
 {
     /// <summary>
     /// Adds the messaging system to the service collection.
-    /// Automatically discovers Integration SDKs and configures named endpoints.
+    /// Integration SDKs, consumers and typed publishers are discovered as the returned builder's
+    /// <c>AddIntegrations</c>/<c>AddConsumer</c>/<c>AddPublishers</c> methods are chained, optionally
+    /// narrowed by <see cref="System.Reflection.AssemblyName"/> filters over the dependency graph.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="configuration">The configuration root.</param>
@@ -24,15 +24,11 @@ public static class MessagingServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        var builder = new MessagingBuilder(services, configuration);
-
         // Register default serializer (can be overridden via ConfigureSerializer)
         services.TryAddSingleton<IMessageSerializer, JsonMessageSerializer>();
 
-        // Run auto-configuration: discovers integrations, registers subscriptions, publishers
-        var configurer = new MessagingAutoConfigurer(services, configuration, builder);
-        configurer.Configure();
-
-        return builder;
+        // The builder owns discovery; it registers the shared SubscriptionRegistry and performs
+        // integration/consumer/publisher registration as the fluent chain is executed.
+        return new MessagingBuilder(services, configuration);
     }
 }

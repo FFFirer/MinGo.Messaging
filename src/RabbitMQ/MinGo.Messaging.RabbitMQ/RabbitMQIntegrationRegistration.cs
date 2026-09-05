@@ -10,6 +10,13 @@ namespace MinGo.Messaging.RabbitMQ;
 public static class RabbitMQIntegrationRegistration
 {
     /// <summary>
+    /// The integration name — used as the keyed-service key, the configuration section name
+    /// (<c>Messaging:Integrations:RabbitMQ</c>), and the value referenced by
+    /// <c>Messaging:Publishers:{Bus}:Integration</c>.
+    /// </summary>
+    public const string IntegrationName = "RabbitMQ";
+
+    /// <summary>
     /// Configures the RabbitMQ integration by binding configuration to options.
     /// </summary>
     /// <param name="services">The service collection to register options in.</param>
@@ -18,7 +25,7 @@ public static class RabbitMQIntegrationRegistration
     {
         var options = new RabbitMQIntegrationOptions
         {
-            IntegrationName = "RabbitMQ"
+            IntegrationName = IntegrationName
         };
 
         section.Bind(options);

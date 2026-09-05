@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Abstractions\MinGo.Messaging.Abstractions\MinGo.Messaging.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Core\MinGo.Messaging.Core\MinGo.Messaging.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

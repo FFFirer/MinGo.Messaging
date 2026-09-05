@@ -3,33 +3,45 @@ using System.Reflection;
 namespace MinGo.Messaging.Integration;
 
 /// <summary>
-/// Discovers Integration SDKs by scanning loaded assemblies for <see cref="MessagingIntegrationAttribute"/>.
+/// Reads <see cref="MessagingIntegrationAttribute"/> declarations from a set of assemblies.
 /// </summary>
-internal sealed class IntegrationDiscovery
+/// <remarks>
+/// Assembly selection (which assemblies to inspect) is the responsibility of
+/// <c>AssemblyScanResolver</c>; this type only inspects the assemblies it is given.
+/// </remarks>
+internal static class IntegrationDiscovery
 {
     /// <summary>
-    /// Scans all loaded assemblies for Integration SDK declarations.
+    /// Returns one <see cref="IntegrationDescriptor"/> per assembly that carries a
+    /// <see cref="MessagingIntegrationAttribute"/>. Assemblies that cannot be inspected are skipped.
     /// </summary>
-    public IReadOnlyList<IntegrationDescriptor> DiscoverIntegrations()
+    public static IReadOnlyList<IntegrationDescriptor> FindIntegrations(IEnumerable<Assembly> assemblies)
     {
+        ArgumentNullException.ThrowIfNull(assemblies);
+
         var integrations = new List<IntegrationDescriptor>();
 
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        foreach (var assembly in assemblies)
         {
-            try
-            {
-                var attr = assembly.GetCustomAttribute<MessagingIntegrationAttribute>();
-                if (attr is not null)
-                {
-                    integrations.Add(new IntegrationDescriptor(attr.Name, attr.TransportType, assembly));
-                }
-            }
-            catch
-            {
-                // Skip assemblies that cannot be inspected (dynamic, reflection-only, etc.)
-            }
+            TryAddIntegration(assembly, integrations);
         }
 
         return integrations;
+    }
+
+    private static void TryAddIntegration(Assembly assembly, List<IntegrationDescriptor> integrations)
+    {
+        try
+        {
+            var attr = assembly.GetCustomAttribute<MessagingIntegrationAttribute>();
+            if (attr is not null)
+            {
+                integrations.Add(new IntegrationDescriptor(attr.Name, attr.TransportType, assembly));
+            }
+        }
+        catch
+        {
+            // Skip assemblies that cannot be inspected (dynamic, reflection-only, etc.)
+        }
     }
 }

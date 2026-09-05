@@ -62,6 +62,7 @@ jobs:
           dotnet pack src/Core/MinGo.Messaging.Core/MinGo.Messaging.Core.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
           dotnet pack src/Hosting/MinGo.Messaging.Hosting/MinGo.Messaging.Hosting.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
           dotnet pack src/RabbitMQ/MinGo.Messaging.RabbitMQ/MinGo.Messaging.RabbitMQ.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
+          dotnet pack src/SimpleMessageBroker/MinGo.Messaging.SimpleMessageBroker/MinGo.Messaging.SimpleMessageBroker.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
 
       - name: Push to NuGet server
         if: startsWith(github.ref, 'refs/tags/v')

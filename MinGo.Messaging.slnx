@@ -16,6 +16,9 @@
   <Folder Name="/src/RabbitMQ/">
     <Project Path="src/RabbitMQ/MinGo.Messaging.RabbitMQ/MinGo.Messaging.RabbitMQ.csproj" />
   </Folder>
+  <Folder Name="/src/SimpleMessageBroker/">
+    <Project Path="src/SimpleMessageBroker/MinGo.Messaging.SimpleMessageBroker/MinGo.Messaging.SimpleMessageBroker.csproj" />
+  </Folder>
   <Folder Name="/tests/" />
   <Folder Name="/tests/Abstractions.Tests/">
     <Project Path="tests/Abstractions.Tests/MinGo.Messaging.Abstractions.Tests/MinGo.Messaging.Abstractions.Tests.csproj" />

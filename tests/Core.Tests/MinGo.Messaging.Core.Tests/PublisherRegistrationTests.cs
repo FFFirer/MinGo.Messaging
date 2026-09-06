@@ -32,20 +32,22 @@ public class PublisherRegistrationTests
     }
 
     [Fact]
-    public async Task NoIntegrations_DefaultPublisherIsNull()
+    public async Task NoIntegrations_DefaultPublisher_Throws()
     {
         var (services, config) = Setup(publisherConfig: null);
 
         services.AddMessaging(config);
 
         await using var sp = services.BuildServiceProvider();
-        var publisher = sp.GetService<IMessagePublisher>();
 
-        Assert.Null(publisher);
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            sp.GetService<IMessagePublisher>());
+
+        Assert.Contains("No messaging integration is registered", ex.Message);
     }
 
     [Fact]
-    public async Task MultipleIntegrations_DefaultPublisherIsNull()
+    public async Task MultipleIntegrations_DefaultPublisher_Throws()
     {
         var (services, config) = Setup(publisherConfig: null);
 
@@ -54,9 +56,83 @@ public class PublisherRegistrationTests
             .AddIntegration<FakeTransport>("SMB");
 
         await using var sp = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            sp.GetService<IMessagePublisher>());
+
+        Assert.Contains("Multiple messaging integrations", ex.Message);
+        Assert.Contains("DefaultPublisher", ex.Message);
+    }
+
+    #endregion
+
+    #region Default Publisher via Configuration
+
+    [Fact]
+    public async Task MultipleIntegrations_WithDefaultPublisherConfig_ResolvesConfiguredIntegration()
+    {
+        var configData = new Dictionary<string, string?>
+        {
+            ["Messaging:DefaultPublisher:Integration"] = "SMB"
+        };
+
+        var (services, config) = Setup(publisherConfig: configData);
+
+        services.AddMessaging(config)
+            .AddIntegration<FakeTransport>("RabbitMQ")
+            .AddIntegration<FakeTransport>("SMB");
+
+        await using var sp = services.BuildServiceProvider();
         var publisher = sp.GetService<IMessagePublisher>();
 
-        Assert.Null(publisher);
+        Assert.NotNull(publisher);
+        // The default publisher should delegate to the "SMB" keyed publisher
+        var smbPublisher = sp.GetKeyedService<IMessagePublisher>("SMB");
+        Assert.Same(smbPublisher, publisher);
+    }
+
+    [Fact]
+    public async Task DefaultPublisherConfig_NonExistentIntegration_ThrowsAtResolveTime()
+    {
+        var configData = new Dictionary<string, string?>
+        {
+            ["Messaging:DefaultPublisher:Integration"] = "NonExistent"
+        };
+
+        var (services, config) = Setup(publisherConfig: configData);
+
+        services.AddMessaging(config)
+            .AddIntegration<FakeTransport>("RabbitMQ");
+
+        // Registration succeeds; the error surfaces when the default publisher is resolved.
+        await using var sp = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            sp.GetService<IMessagePublisher>());
+
+        Assert.Contains("NonExistent", ex.Message);
+        Assert.Contains("not registered", ex.Message);
+    }
+
+    [Fact]
+    public async Task SingleIntegration_WithDefaultPublisherConfig_UsesConfiguredIntegration()
+    {
+        var configData = new Dictionary<string, string?>
+        {
+            ["Messaging:DefaultPublisher:Integration"] = "RabbitMQ"
+        };
+
+        var (services, config) = Setup(publisherConfig: configData);
+
+        services.AddMessaging(config)
+            .AddIntegration<FakeTransport>("RabbitMQ");
+
+        await using var sp = services.BuildServiceProvider();
+        var publisher = sp.GetService<IMessagePublisher>();
+
+        Assert.NotNull(publisher);
+        var rabbitPublisher = sp.GetKeyedService<IMessagePublisher>("RabbitMQ");
+        Assert.Same(rabbitPublisher, publisher);
     }
 
     #endregion

@@ -47,6 +47,15 @@ internal sealed class MessagingBuilder : IMessagingBuilder
 
         // The registry is a single mutable singleton, populated as consumers are added.
         services.AddSingleton(_registry);
+
+        // Guard descriptor: throws when no integrations are registered.
+        // Replaced by SyncDefaultPublisher as integrations are added.
+        _defaultPublisherDescriptor = ServiceDescriptor.Singleton<IMessagePublisher>(
+            _ => throw new InvalidOperationException(
+                "No messaging integration is registered. " +
+                "Add at least one integration (e.g. UseRabbitMQ(), UseSimpleMessageBroker(), " +
+                "or AddIntegration<T>()) before resolving IMessagePublisher."));
+        services.Add(_defaultPublisherDescriptor);
     }
 
     public IServiceCollection Services { get; }
@@ -177,7 +186,15 @@ internal sealed class MessagingBuilder : IMessagingBuilder
 
     /// <summary>
     /// Keeps the default (non-keyed) <see cref="IMessagePublisher"/> registration in sync with the
-    /// number of discovered integrations: it is present only when there is exactly one integration.
+    /// number of discovered integrations:
+    /// <list type="number">
+    ///   <item>When <c>Messaging:DefaultPublisher:Integration</c> is configured, the named integration
+    ///   is used regardless of how many integrations are registered.</item>
+    ///   <item>When exactly one integration is registered, it becomes the default automatically.</item>
+    ///   <item>Otherwise resolving the default publisher throws an <see cref="InvalidOperationException"/>
+    ///   prompting the caller to configure <c>Messaging:DefaultPublisher:Integration</c> or use a
+    ///   typed publisher.</item>
+    /// </list>
     /// </summary>
     private void SyncDefaultPublisher()
     {
@@ -187,12 +204,52 @@ internal sealed class MessagingBuilder : IMessagingBuilder
             _defaultPublisherDescriptor = null;
         }
 
-        if (_integrationNames.Count != 1) return;
+        // 1. Explicit configuration: Messaging:DefaultPublisher:Integration
+        var configuredDefault = Configuration.GetSection("Messaging:DefaultPublisher")["Integration"];
 
-        // Exactly one integration: expose it as the default (non-keyed) publisher too.
-        var integrationName = _integrationNames.First();
+        if (!string.IsNullOrWhiteSpace(configuredDefault))
+        {
+            // Validation is deferred to resolve time: integrations may still be registered
+            // after this call, so we cannot fail eagerly here.
+            _defaultPublisherDescriptor = ServiceDescriptor.Singleton<IMessagePublisher>(
+                sp =>
+                {
+                    var keyed = sp.GetKeyedService<IMessagePublisher>(configuredDefault);
+                    if (keyed is null)
+                    {
+                        throw new InvalidOperationException(
+                            $"The configured default publisher integration '{configuredDefault}' " +
+                            $"is not registered. Available integrations: {string.Join(", ", _integrationNames)}.");
+                    }
+
+                    return keyed;
+                });
+            Services.Add(_defaultPublisherDescriptor);
+            return;
+        }
+
+        // 2. Single integration auto-inference
+        if (_integrationNames.Count == 1)
+        {
+            var integrationName = _integrationNames.First();
+            _defaultPublisherDescriptor = ServiceDescriptor.Singleton<IMessagePublisher>(
+                sp => sp.GetRequiredKeyedService<IMessagePublisher>(integrationName));
+            Services.Add(_defaultPublisherDescriptor);
+            return;
+        }
+
+        // 3. Ambiguous (0 or multiple integrations): register a descriptor that throws at resolve
+        //    time with a clear message guiding the user toward a fix.
         _defaultPublisherDescriptor = ServiceDescriptor.Singleton<IMessagePublisher>(
-            sp => sp.GetRequiredKeyedService<IMessagePublisher>(integrationName));
+            _ => throw new InvalidOperationException(
+                _integrationNames.Count == 0
+                    ? "No messaging integration is registered. " +
+                      "Add at least one integration (e.g. UseRabbitMQ(), UseSimpleMessageBroker(), " +
+                      "or AddIntegration<T>()) before resolving IMessagePublisher."
+                    : $"Multiple messaging integrations are registered ({string.Join(", ", _integrationNames)}), " +
+                      $"so a default IMessagePublisher cannot be inferred. " +
+                      $"Set 'Messaging:DefaultPublisher:Integration' in configuration to disambiguate, " +
+                      $"or use a typed publisher interface decorated with [MessageBus]."));
         Services.Add(_defaultPublisherDescriptor);
     }
 }

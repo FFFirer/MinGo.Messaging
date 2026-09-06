@@ -26,4 +26,10 @@
   <Folder Name="/tests/Abstractions.Tests/">
     <Project Path="tests/Abstractions.Tests/MinGo.Messaging.Abstractions.Tests/MinGo.Messaging.Abstractions.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/Core.Tests/">
+    <Project Path="tests/Core.Tests/MinGo.Messaging.Core.Tests/MinGo.Messaging.Core.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Integration.Tests/">
+    <Project Path="tests/Integration.Tests/MinGo.Messaging.Integration.Tests/MinGo.Messaging.Integration.Tests.csproj" />
+  </Folder>
 </Solution>

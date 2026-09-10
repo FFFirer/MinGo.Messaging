@@ -1,3 +1,4 @@
+using MinGo.Messaging.Internal;
 using MinGo.Messaging.Subscriptions;
 using MinGo.Messaging.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,7 +33,7 @@ public sealed class MessagingHostedService : IHostedService, IAsyncDisposable
     {
         _logger.LogInformation("Starting messaging hosted service...");
 
-        // Resolve all registered transports and connect them
+        // ── Connect all registered transports ────────────────────────────────────────────────────
         var transports = _serviceProvider.GetServices<IMessagingTransport>();
         foreach (var transport in transports)
         {
@@ -41,17 +42,56 @@ public sealed class MessagingHostedService : IHostedService, IAsyncDisposable
             _logger.LogInformation("Transport connected: {TransportType}", transport.GetType().Name);
         }
 
-        foreach (var subscription in _subscriptionRegistry.Subscriptions)
+        if (_transports.Count == 0)
         {
-            _logger.LogInformation(
-                "Registered subscription: {SubscriptionId} for contract {ContractId} v{Version} in group {Group}",
-                subscription.Id,
-                subscription.ContractId,
-                subscription.ContractVersion,
-                subscription.Target.ConsumerGroupId);
+            _logger.LogWarning(
+                "No messaging transports are registered. " +
+                "Consumers will not be subscribed. Register at least one integration " +
+                "(e.g. UseRabbitMQ(), UseSimpleMessageBroker()).");
+            return;
         }
 
-        _logger.LogInformation("Messaging hosted service started with {TransportCount} transport(s) and {Count} subscription(s).",
+        // ── Select the transport used for all consumer subscriptions ───────────────────────────
+        // When multiple transports are registered, the first one is used as the default consumer
+        // transport. Per-subscription transport routing can be added via configuration in the future.
+        var consumerTransport = _transports[0];
+
+        if (_transports.Count > 1)
+        {
+            _logger.LogWarning(
+                "Multiple transports are registered ({Count}). " +
+                "All consumer subscriptions will use '{TransportType}'. " +
+                "Per-subscription transport routing is not yet configurable.",
+                _transports.Count,
+                consumerTransport.GetType().Name);
+        }
+
+        // ── Subscribe all discovered subscriptions ─────────────────────────────────────────────
+        var dispatcher = _serviceProvider.GetRequiredService<ConsumerDispatcher>();
+
+        foreach (var subscription in _subscriptionRegistry.Subscriptions)
+        {
+            var handler = dispatcher.CreateHandler(subscription);
+
+            await consumerTransport.SubscribeAsync(
+                topic: subscription.ContractId,
+                subscriptionId: subscription.Id,
+                group: subscription.Target.ConsumerGroupId ?? subscription.ConsumerServiceId,
+                deliveryMode: subscription.DeliveryMode,
+                handler: handler,
+                cancellationToken: cancellationToken);
+
+            _logger.LogInformation(
+                "Subscribed: {SubscriptionId} | topic={Topic} | group={Group} | mode={DeliveryMode}",
+                subscription.Id,
+                subscription.ContractId,
+                subscription.Target.ConsumerGroupId ?? subscription.ConsumerServiceId,
+                subscription.DeliveryMode);
+        }
+
+        _logger.LogInformation(
+            "Messaging hosted service started with {TransportCount} transport(s) " +
+            "and {Count} subscription(s).",
             _transports.Count,
             _subscriptionRegistry.Subscriptions.Count);
     }

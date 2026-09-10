@@ -154,15 +154,20 @@ internal sealed class MessagingAutoConfigurer
             var hasConsumerAttr = type.GetCustomAttributes<MessageConsumerAttribute>().Any();
             if (!hasConsumerAttr) continue;
 
-            // Register the consumer type as transient
-            _services.AddTransient(type);
+            // Register the consumer type as scoped.
+            // Each message delivery is processed inside its own DI scope (created by
+            // ConsumerDispatcher), so a scoped consumer — and any scoped dependencies it
+            // requires (e.g. DbContext, unit-of-work) — is instantiated per message and
+            // disposed when that message finishes processing.
+            _services.AddScoped(type);
 
-            // Register all IConsumer<T> interfaces
+            // Register all IConsumer<T> interfaces with the same scoped lifetime so that
+            // resolving the interface within a message scope yields the scoped instance.
             foreach (var iface in type.GetInterfaces())
             {
                 if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IConsumer<>))
                 {
-                    _services.AddTransient(iface, type);
+                    _services.AddScoped(iface, type);
                 }
             }
         }

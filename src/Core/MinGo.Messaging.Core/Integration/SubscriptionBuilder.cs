@@ -33,6 +33,8 @@ internal sealed class SubscriptionBuilder
                     ContractId = contractId,
                     ContractVersion = contractVersion,
                     ConsumerServiceId = resolvedServiceId,
+                    MessageType = attr.Contract,
+                    ConsumerType = type,
                     DeliveryMode = attr.DeliveryMode,
                     Target = new DeliveryTarget
                     {

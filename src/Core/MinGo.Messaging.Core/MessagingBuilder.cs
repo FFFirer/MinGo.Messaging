@@ -48,6 +48,9 @@ internal sealed class MessagingBuilder : IMessagingBuilder
         // The registry is a single mutable singleton, populated as consumers are added.
         services.AddSingleton(_registry);
 
+        // ConsumerDispatcher bridges transport handler callbacks → IConsumer<T> instances.
+        services.AddSingleton<ConsumerDispatcher>();
+
         // Guard descriptor: throws when no integrations are registered.
         // Replaced by SyncDefaultPublisher as integrations are added.
         _defaultPublisherDescriptor = ServiceDescriptor.Singleton<IMessagePublisher>(

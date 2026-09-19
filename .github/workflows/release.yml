@@ -61,9 +61,28 @@ jobs:
           dotnet pack src/Abstractions/MinGo.Messaging.Abstractions/MinGo.Messaging.Abstractions.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
           dotnet pack src/Core/MinGo.Messaging.Core/MinGo.Messaging.Core.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
           dotnet pack src/Hosting/MinGo.Messaging.Hosting/MinGo.Messaging.Hosting.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
+          dotnet pack src/InMemory/MinGo.Messaging.InMemory/MinGo.Messaging.InMemory.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
           dotnet pack src/RabbitMQ/MinGo.Messaging.RabbitMQ/MinGo.Messaging.RabbitMQ.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
           dotnet pack src/SimpleMessageBroker/MinGo.Messaging.SimpleMessageBroker/MinGo.Messaging.SimpleMessageBroker.csproj --no-build --configuration Release -p:PackageVersion=${{ steps.version.outputs.VERSION }} -o artifacts
+
+      - name: Upload packages as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nugget-packages-${{ steps.version.outputs.VERSION }}
+          path: artifacts/*.nupkg
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Push to NuGet server
         if: startsWith(github.ref, 'refs/tags/v')
         run: dotnet nuget push "artifacts/*.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source "${{ env.NUGET_SOURCE }}" --skip-duplicate
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: artifacts/*.nupkg
+          fail_on_unmatched_files: true

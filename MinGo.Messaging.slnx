@@ -16,6 +16,9 @@
   <Folder Name="/src/Hosting/">
     <Project Path="src/Hosting/MinGo.Messaging.Hosting/MinGo.Messaging.Hosting.csproj" />
   </Folder>
+  <Folder Name="/src/InMemory/">
+    <Project Path="src/InMemory/MinGo.Messaging.InMemory/MinGo.Messaging.InMemory.csproj" />
+  </Folder>
   <Folder Name="/src/RabbitMQ/">
     <Project Path="src/RabbitMQ/MinGo.Messaging.RabbitMQ/MinGo.Messaging.RabbitMQ.csproj" />
   </Folder>

@@ -13,6 +13,7 @@ Three-layer design: **Base SDK** → **Integration SDK** → **Middleware Client
 | Hosting | `MinGo.Messaging.Hosting` | IHostedService lifecycle management |
 | RabbitMQ | `MinGo.Messaging.RabbitMQ` | RabbitMQ transport with Competing/Broadcast delivery modes |
 | SimpleMessageBroker | `MinGo.Messaging.SimpleMessageBroker` | SimpleMessageBroker transport (pull-based consumption, JSON over HTTP) |
+| InMemory | `MinGo.Messaging.InMemory` | Process-local, zero-dependency transport for unit tests and local development |
 
 ## Key Concepts
 
@@ -21,7 +22,7 @@ Three-layer design: **Base SDK** → **Integration SDK** → **Middleware Client
 - **Two-Layer Fan-out**: Event → Subscriptions (business) → Consumer Instances (scale)
 - **DeliveryMode**: `Competing` (load balance) vs `Broadcast` (all instances)
 - **Named Messaging Endpoints**: Publisher routing via Keyed DI
-- **Explicit Integration Registration**: `UseRabbitMQ()` / `UseSimpleMessageBroker()` wire a known integration directly — no assembly scanning, AOT/trimming-friendly
+- **Explicit Integration Registration**: `UseRabbitMQ()` / `UseSimpleMessageBroker()` / `UseInMemory()` wire a known integration directly — no assembly scanning, AOT/trimming-friendly
 - **Convention-Driven Auto-Assembly**: `[MessagingIntegration]` for zero-config integration discovery
 - **Filter-Based Assembly Scanning**: discover integrations/consumers/publishers across the whole dependency graph, narrowed by `AssemblyName` filters
 
@@ -53,7 +54,7 @@ An integration provides a transport (and its keyed `IMessagePublisher`). Registe
 
 ```csharp
 builder.Services.AddMessaging(configuration)
-    .UseRabbitMQ()                 // or .UseSimpleMessageBroker()
+    .UseRabbitMQ()                 // or .UseSimpleMessageBroker() / .UseInMemory()
     .AddPublishers()
     .AddConsumer(typeof(Program).Assembly);
 ```

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>MinGo.Messaging.InMemory</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <Description>In-process, zero-dependency transport integration for MinGo.Messaging. Intended for unit tests, local development, and single-process workloads.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MinGo.Messaging.Integration.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Abstractions\MinGo.Messaging.Abstractions\MinGo.Messaging.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Core\MinGo.Messaging.Core\MinGo.Messaging.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>

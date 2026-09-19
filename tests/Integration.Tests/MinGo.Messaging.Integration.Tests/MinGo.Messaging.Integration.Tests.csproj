@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\src\InMemory\MinGo.Messaging.InMemory\MinGo.Messaging.InMemory.csproj" />
     <ProjectReference Include="..\..\..\src\RabbitMQ\MinGo.Messaging.RabbitMQ\MinGo.Messaging.RabbitMQ.csproj" />
     <ProjectReference Include="..\..\..\src\SimpleMessageBroker\MinGo.Messaging.SimpleMessageBroker\MinGo.Messaging.SimpleMessageBroker.csproj" />
   </ItemGroup>
